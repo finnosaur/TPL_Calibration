@@ -9,65 +9,12 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit 
 from func import func
 from datetime import datetime
-
-
-
-def snap_image():
-    # acquire an image and display it
-    core.snap_image()
-    tagged_image = core.get_tagged_image()
-    # get the pixels in numpy array and reshape it according to its height and width
-    image_array = np.reshape(
-        tagged_image.pix,
-        newshape=[-1, tagged_image.tags["Height"], tagged_image.tags["Width"]],
-    )
-    # for display, we can scale the image into the range of 0~255
-    image_array = (image_array / image_array.max() * 255).astype("uint8")
-    # return the first channel if multiple exists
-    return image_array[0, :, :]
-
-def pix_to_volts(spot_pos, x_coefs, y_coefs):
-    
-    xpos = spot_pos[0]
-    ypos = spot_pos[1]
-    
-    x_volt = (xpos - x_coefs[1]) / x_coefs[0]
-    y_volt = (ypos - y_coefs[1]) / y_coefs[0]
-    
-    volts_xy = np.array([x_volt, y_volt])
-    return(volts_xy)
-
-def set_galvos(volts_xy):
-    
-    core.set_property(tpl_X, 'Voltage', volts_xy[0])
-    core.set_property(tpl_Y, 'Voltage', volts_xy[1])
-    print('Setting X,Y voltages to: {vx}, {vy} volts'.format(vx = volts_xy[0], vy= volts_xy[1]))
-    
-    return
-
-def get_galvo_voltages():
-    
-    v_x = core.get_property('NIDAQAO-Dev3/ao0-Galvo-X-Axis', 'Voltage')
-    v_y = core.get_property('NIDAQAO-Dev3/ao1-Galvo-Y-Axis', 'Voltage')
-    
-    volt_vals = [v_x, v_y]
-    
-    return np.array(volt_vals)
-
-def pix_to_volts_empirical(xy_pos, func ,x_popt, y_popt):
-    
-    x = xy_pos[0]
-    y = xy_pos[1]
-    
-    vx = func( (x, y) , *x_popt)  
-    vy =func( (x, y) , *y_popt) 
-    
-    return [vx, vy]
+import tpl_functions as tpl
 
 
 
 # =============================================================================
-# # please input the directory for your current project
+# # please input the directory for where you will store your calibration results
 # =============================================================================
 project_dir = r'C:\Local_Data\Finn\20240122_pycromanager'
 
@@ -106,7 +53,7 @@ tpl_shutter = 'NIDAQAO-Dev3/ao3-TPL-ChBlank'
 core.set_property(tpl_shutter, 'Voltage', 5)
 
 
-cur_im = snap_image()
+cur_im = tpl.snap_image()
 plt.imshow(cur_im, cmap='gray')
 
 
@@ -152,7 +99,7 @@ for v_x in x_voltages:
     # time.sleep(0.1)
     
     # snap an image 
-    cur_im = snap_image()
+    cur_im = tpl.snap_image()
     save_name = os.path.join(save_dir, 'vx_cal_{}.tif'.format(i))
     
     # save the image
@@ -202,7 +149,7 @@ for v_y in y_voltages:
     # time.sleep(0.1)
     
     # snap an image 
-    cur_im = snap_image()
+    cur_im = tpl.snap_image()
     save_name = os.path.join(save_dir, 'vy_cal_{}.tif'.format(i))
     
     # # save the image
@@ -301,11 +248,11 @@ for i in range(len(x_test)):
     
     spot_pos = [x_test[i],y_test[i]]
     
-    volt_vals = pix_to_volts(spot_pos, x_coefs, y_coefs)
+    volt_vals = tpl.pix_to_volts(spot_pos, x_coefs, y_coefs)
     
-    set_galvos(volt_vals)
+    tpl.set_galvos(volt_vals, tpl_X, tpl_Y)
     
-    cur_im = snap_image()
+    cur_im = tpl.snap_image()
     
     f = tp.locate(cur_im, 5, minmass=50)
 
@@ -316,7 +263,7 @@ for i in range(len(x_test)):
     spot_pos = np.array([x_coord,y_coord])
     tp.annotate(f, cur_im)
     
-    cur_volt_vals = get_galvo_voltages()
+    cur_volt_vals = tpl.get_galvo_voltages(tpl_X, tpl_Y)
     
     volt_pos_arr2[i,:] = np.append(spot_pos, cur_volt_vals)
     
@@ -441,9 +388,16 @@ x_test= my_grid[0].flatten()
 y_test = my_grid[1].flatten()
 
 
-# fig, ax = plt.subplots()
+fig, ax = plt.subplots()
 
-plt.scatter(x_test, y_test, alpha = 0.2, c = 'gray')
+
+
+ax.scatter(x_test, y_test, alpha = 0.2, c = 'gray')
+
+
+
+cur_im = tpl.snap_image()
+ax.imshow(cur_im)
 
 
 core.set_property('NIDAQAO-Dev3/ao3-TPL-ChBlank', 'Voltage', 5)
@@ -452,11 +406,11 @@ for i in range(len(x_test)):
     
     test_pos = np.array([x_test[i],y_test[i]])
     
-    volt_vals = pix_to_volts_empirical(test_pos, func, vx_popt, vy_popt)
+    volt_vals = tpl.pix_to_volts_empirical(test_pos, func, vx_popt, vy_popt)
     
-    set_galvos(volt_vals)
+    tpl.set_galvos(volt_vals, tpl_X, tpl_Y)
     
-    cur_im = snap_image()
+    cur_im = tpl.snap_image()
     
     f = tp.locate(cur_im, 5, minmass=50)
 
@@ -466,11 +420,12 @@ for i in range(len(x_test)):
     y_coord = loc[0,0] # get y coord in pix
     spot_pos = np.array([x_coord,y_coord])
     
-    # ax.scatter(x_coord, y_coord, facecolors='none')
-    # ax.imshow(cur_im)
+    # ax.scatter(x_coord, y_coord)
     
-    # plt.sca(ax)
+
     tp.annotate(f, cur_im, plot_style={'markersize': 4, 'linewidth': 0.3})
+    
+    
     
     resid = np.subtract(test_pos, spot_pos)
     
@@ -480,7 +435,7 @@ for i in range(len(x_test)):
     
     
 core.set_property('NIDAQAO-Dev3/ao3-TPL-ChBlank', 'Voltage', 0)   
-set_galvos(pix_to_volts_empirical([600,600], func, vx_popt, vy_popt))
+tpl.set_galvos(tpl.pix_to_volts_empirical([600,600], func, vx_popt, vy_popt), tpl_X, tpl_Y)
 
 print('~~~~~~~~~~~~~~~~')
 print('fine calibration complete')
